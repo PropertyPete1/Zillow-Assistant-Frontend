@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   Home, Search, MessageCircle, FileText, Settings, 
   TestTube, BarChart3, Play, Download, Send, 
@@ -6,13 +6,39 @@ import {
   MapPin, Users, CheckCircle, XCircle, Shield,
   Eye, Save, RefreshCw, Zap, Target
 } from 'lucide-react';
+import { api } from '../lib/api';
+
+type ListingType = 'rent' | 'sale' | 'both';
+
+type Listing = {
+  id: string | number;
+  address: string;
+  price: string;
+  beds?: number;
+  baths?: number;
+  sqft?: number;
+  type: 'rent' | 'sale';
+  owner?: string;
+  status?: 'ready' | 'sent' | 'failed' | 'blocked' | string;
+  redFlag?: string;
+};
+
+type MessageLog = {
+  id: string | number;
+  address: string;
+  owner: string;
+  type: 'rent' | 'sale';
+  status: 'sent' | 'failed' | 'blocked' | string;
+  date: string;
+};
 
 const ZillowDashboard = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [listingMode, setListingMode] = useState('both'); // rent, sale, both
+  const [listingMode, setListingMode] = useState<ListingType>('both'); // rent, sale, both
   const [autoMessage, setAutoMessage] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
 
   // Sample data
   const [scraperStats, setScraperStats] = useState({
@@ -21,25 +47,46 @@ const ZillowDashboard = () => {
     messagesSentToday: 12,
     isRunning: false
   });
-
-  const [listings] = useState([
-    { id: 1, address: '123 Oak St', price: '$2,400', beds: 3, type: 'rent', owner: 'Sarah', status: 'ready' },
-    { id: 2, address: '456 Pine Ave', price: '$450,000', beds: 4, type: 'sale', owner: 'Mike', status: 'sent' },
-    { id: 3, address: '789 Elm Dr', price: '$1,800', beds: 2, type: 'rent', owner: 'Lisa', status: 'ready' },
-    { id: 4, address: '321 Maple Ln', price: '$380,000', beds: 3, type: 'sale', owner: 'John', status: 'blocked' },
-  ]);
-
-  const [messages] = useState([
-    { id: 1, address: '123 Oak St', owner: 'Sarah', type: 'rent', status: 'sent', date: '2025-08-08' },
-    { id: 2, address: '456 Pine Ave', owner: 'Mike', type: 'sale', status: 'failed', date: '2025-08-07' },
-    { id: 3, address: '789 Elm Dr', owner: 'Lisa', type: 'rent', status: 'sent', date: '2025-08-08' },
-  ]);
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [logs, setLogs] = useState<MessageLog[]>([]);
+  const [zipInput, setZipInput] = useState<string>('');
+  const [filters, setFilters] = useState<{ alreadyRented: boolean; noAgents: boolean; duplicatePhotos: boolean }>({
+    alreadyRented: true,
+    noAgents: true,
+    duplicatePhotos: true,
+  });
+  const [messageDrafts, setMessageDrafts] = useState<Record<string | number, string>>({});
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Initial data load: settings, listings, logs
+  useEffect(() => {
+    (async () => {
+      try {
+        const settings = await api.getSettings().catch(() => null);
+        if (settings) {
+          if (settings?.propertyType && ['rent', 'sale', 'both'].includes(settings.propertyType)) {
+            setListingMode(settings.propertyType as ListingType);
+          }
+          if (typeof settings?.autoMessages === 'boolean') {
+            setAutoMessage(Boolean(settings.autoMessages));
+          }
+        }
+      } catch {}
+      try {
+        const listResp = await api.getListings();
+        if (Array.isArray(listResp?.listings)) setListings(listResp.listings as Listing[]);
+      } catch {}
+      try {
+        const logsResp = await api.getLogs();
+        if (Array.isArray(logsResp?.logs)) setLogs(logsResp.logs as MessageLog[]);
+      } catch {}
+    })();
   }, []);
 
   const sidebarItems = [
@@ -61,7 +108,11 @@ const ZillowDashboard = () => {
       ].map(mode => (
         <button
           key={mode.id}
-          onClick={() => setListingMode(mode.id)}
+          onClick={async () => {
+            const next = mode.id as ListingType;
+            setListingMode(next);
+            try { await api.setPropertyType(next); } catch {}
+          }}
           className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
             listingMode === mode.id
               ? `bg-gradient-to-r ${mode.color} text-white shadow-lg`
@@ -129,8 +180,22 @@ const ZillowDashboard = () => {
           <h3 className="text-xl font-semibold text-white mb-4">Scraper Controls</h3>
           <div className="space-y-4">
             <button 
-              className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center"
-              onClick={() => setScraperStats(prev => ({ ...prev, isRunning: !prev.isRunning }))}
+              className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-all duration-300 flex items-center justify-center disabled:opacity-60"
+              disabled={isBusy}
+              onClick={async () => {
+                setIsBusy(true);
+                setScraperStats(prev => ({ ...prev, isRunning: true }));
+                try {
+                  await api.runScraper({ propertyType: listingMode, zipCodes: zipInput ? [zipInput] : undefined, filters: {
+                    alreadyRented: filters.alreadyRented, noAgents: filters.noAgents, duplicatePhotos: filters.duplicatePhotos
+                  }});
+                  const listResp = await api.getListings();
+                  if (Array.isArray(listResp?.listings)) setListings(listResp.listings as Listing[]);
+                  setScraperStats(prev => ({ ...prev, lastRun: 'just now' }));
+                } catch {}
+                setScraperStats(prev => ({ ...prev, isRunning: false }));
+                setIsBusy(false);
+              }}
             >
               <RefreshCw className={`w-5 h-5 mr-2 ${scraperStats.isRunning ? 'animate-spin' : ''}`} />
               {scraperStats.isRunning ? 'Running...' : 'Re-Run Scraper'}
@@ -139,7 +204,11 @@ const ZillowDashboard = () => {
             <div className="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
               <span className="text-gray-300">Auto Messages</span>
               <button
-                onClick={() => setAutoMessage(!autoMessage)}
+                onClick={async () => {
+                  const next = !autoMessage;
+                  setAutoMessage(next);
+                  try { await api.saveSettings({ autoMessages: next }); } catch {}
+                }}
                 className={`w-12 h-6 rounded-full transition-all duration-300 ${
                   autoMessage ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gray-600'
                 }`}
@@ -187,23 +256,49 @@ const ZillowDashboard = () => {
               type="text"
               placeholder="Enter city or zip code..."
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:border-cyan-500 focus:outline-none"
+              value={zipInput}
+              onChange={(e) => setZipInput(e.target.value)}
             />
             
             <div className="space-y-3">
-              {['Listings w/ "Already Rented"', 'Listings w/ "No Agents"', 'Listings w/ duplicate photos'].map((filter, idx) => (
-                <label key={idx} className="flex items-center text-gray-300">
-                  <input type="checkbox" className="mr-3 text-cyan-500" defaultChecked />
-                  Auto-skip {filter}
-                </label>
-              ))}
+              <label className="flex items-center text-gray-300">
+                <input type="checkbox" className="mr-3 text-cyan-500" checked={filters.alreadyRented} onChange={(e)=>setFilters(v=>({ ...v, alreadyRented: e.target.checked }))} />
+                Auto-skip Listings w/ "Already Rented"
+              </label>
+              <label className="flex items-center text-gray-300">
+                <input type="checkbox" className="mr-3 text-cyan-500" checked={filters.noAgents} onChange={(e)=>setFilters(v=>({ ...v, noAgents: e.target.checked }))} />
+                Auto-skip Listings w/ "No Agents"
+              </label>
+              <label className="flex items-center text-gray-300">
+                <input type="checkbox" className="mr-3 text-cyan-500" checked={filters.duplicatePhotos} onChange={(e)=>setFilters(v=>({ ...v, duplicatePhotos: e.target.checked }))} />
+                Auto-skip Listings w/ duplicate photos
+              </label>
             </div>
 
             <div className="flex gap-3">
-              <button className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center">
+              <button className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center disabled:opacity-60" disabled={isBusy}
+                onClick={async ()=>{
+                  setIsBusy(true);
+                  try { await api.runScraper({ propertyType: listingMode, zipCodes: zipInput ? [zipInput] : undefined, filters });
+                    const listResp = await api.getListings();
+                    if (Array.isArray(listResp?.listings)) setListings(listResp.listings as Listing[]);
+                  } catch {}
+                  setIsBusy(false);
+                }}
+              >
                 <Search className="w-5 h-5 mr-2" />
                 Start Search
               </button>
-              <button className="flex-1 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-medium py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center">
+              <button className="flex-1 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-medium py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center disabled:opacity-60" disabled={isBusy}
+                onClick={async ()=>{
+                  setIsBusy(true);
+                  try { await api.runScraper({ propertyType: listingMode, filters });
+                    const listResp = await api.getListings();
+                    if (Array.isArray(listResp?.listings)) setListings(listResp.listings as Listing[]);
+                  } catch {}
+                  setIsBusy(false);
+                }}
+              >
                 <Download className="w-5 h-5 mr-2" />
                 Scrape Latest
               </button>
@@ -218,7 +313,7 @@ const ZillowDashboard = () => {
               <div key={listing.id} className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
                 <div>
                   <p className="text-white font-medium">{listing.address}</p>
-                  <p className="text-gray-400 text-sm">{listing.price} • {listing.beds} bed • {listing.owner}</p>
+                  <p className="text-gray-400 text-sm">{listing.price}{listing.beds ? ` • ${listing.beds} bed` : ''} {listing.owner ? ` • ${listing.owner}` : ''}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`px-2 py-1 rounded text-xs font-medium ${
@@ -226,7 +321,15 @@ const ZillowDashboard = () => {
                   }`}>
                     {listing.type.toUpperCase()}
                   </span>
-                  <StatusBadge status={listing.status} />
+                  {listing.status && <StatusBadge status={listing.status} />}
+                  <button
+                    className="ml-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white text-xs font-medium py-1 px-3 rounded-lg transition-all duration-300 flex items-center"
+                    onClick={async ()=>{
+                      try { await api.sendMessage({ listing }); } catch {}
+                    }}
+                  >
+                    <Send className="w-3 h-3 mr-1" /> Message
+                  </button>
                 </div>
               </div>
             ))}
@@ -237,24 +340,19 @@ const ZillowDashboard = () => {
   );
 
   const [showSendAllModal, setShowSendAllModal] = useState(false);
-  const [sendAllResults, setSendAllResults] = useState([]);
+  const [sendAllResults, setSendAllResults] = useState<any[]>([]);
   const [isSendingAll, setIsSendingAll] = useState(false);
 
   // Mock function to simulate batch sending
   const handleSendAllMessages = async () => {
     setIsSendingAll(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      const results = [
-        { address: '123 Oak St', status: 'sent', type: 'rent' },
-        { address: '789 Elm Dr', status: 'sent', type: 'rent' },
-        { address: '456 Pine Ave', status: 'failed', reason: 'blocked', type: 'sale' }
-      ];
-      setSendAllResults(results);
-      setIsSendingAll(false);
-      setShowSendAllModal(false);
-    }, 3000);
+    try {
+      const resp = await api.sendBatch({ propertyType: listingMode === 'both' ? 'both' : listingMode, maxMessages: 10 });
+      const results = Array.isArray(resp?.results) ? resp.results : resp;
+      if (Array.isArray(results)) setSendAllResults(results);
+    } catch {}
+    setIsSendingAll(false);
+    setShowSendAllModal(false);
   };
 
   const MessagesContent = () => (
@@ -334,7 +432,7 @@ const ZillowDashboard = () => {
       </div>
       
       <div className="grid gap-6">
-        {listings.filter(l => l.status === 'ready').map(listing => (
+        {listings.filter(l => !l.status || l.status === 'ready').map(listing => (
           <div key={listing.id} className="bg-gray-900/50 backdrop-blur-sm border border-gray-800 rounded-xl p-6">
             <div className="flex justify-between items-start mb-4">
               <div>
@@ -351,15 +449,30 @@ const ZillowDashboard = () => {
             <textarea
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:border-cyan-500 focus:outline-none mb-4"
               rows={4}
-              placeholder={`Hi ${listing.owner}, I'm interested in ${listing.type === 'rent' ? 'renting' : 'purchasing'} your property at ${listing.address}...`}
+              value={messageDrafts[listing.id] ?? ''}
+              onChange={(e)=> setMessageDrafts(prev => ({ ...prev, [listing.id]: e.target.value }))}
+              placeholder={`Hi ${listing.owner ?? ''}, I'm interested in ${listing.type === 'rent' ? 'renting' : 'purchasing'} your property at ${listing.address}...`}
             />
             
             <div className="flex gap-3">
-              <button className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center">
+              <button className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center"
+                onClick={async ()=>{
+                  const message = messageDrafts[listing.id] ?? '';
+                  try { await api.sendMessage({ listing, message }); } catch {}
+                }}
+              >
                 <Send className="w-4 h-4 mr-2" />
                 Send Message
               </button>
-              <button className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 flex items-center">
+              <button className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 flex items-center"
+                onClick={async ()=>{
+                  try {
+                    const resp = await api.regenerateMessage({ listingId: listing.id });
+                    const text = resp?.message || '';
+                    setMessageDrafts(prev => ({ ...prev, [listing.id]: text }));
+                  } catch {}
+                }}
+              >
                 <RotateCcw className="w-4 h-4 mr-2" />
                 Regenerate
               </button>
@@ -430,7 +543,9 @@ const ZillowDashboard = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-white">Message Logs</h1>
-        <button className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 flex items-center">
+        <button className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 flex items-center"
+          onClick={async ()=>{ try { await api.exportLogsToSheets(); } catch {} }}
+        >
           <Download className="w-4 h-4 mr-2" />
           Export to Sheets
         </button>
@@ -449,7 +564,7 @@ const ZillowDashboard = () => {
               </tr>
             </thead>
             <tbody>
-              {messages.map(msg => (
+              {logs.map(msg => (
                 <tr key={msg.id} className="border-t border-gray-800 hover:bg-gray-800/30">
                   <td className="px-6 py-4 text-white">{msg.address}</td>
                   <td className="px-6 py-4 text-gray-300">{msg.owner}</td>
@@ -473,6 +588,42 @@ const ZillowDashboard = () => {
     </div>
   );
 
+  const [settingsForm, setSettingsForm] = useState({
+    zillowEmail: '',
+    zillowPassword: '',
+    googleSheetUrl: '',
+    minBedrooms: '',
+    maxPrice: '',
+    dailyMessageLimit: '',
+    timeWindow: '',
+    redFlag: true,
+    defaultType: 'both' as ListingType,
+    testMode: false,
+  });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await api.getSettings();
+        if (s) {
+          setSettingsForm(prev => ({
+            ...prev,
+            zillowEmail: s.zillowEmail ?? '',
+            zillowPassword: '',
+            googleSheetUrl: s.googleSheetUrl ?? '',
+            minBedrooms: s.minBedrooms?.toString?.() ?? '',
+            maxPrice: s.maxPrice?.toString?.() ?? '',
+            dailyMessageLimit: s.dailyMessageLimit?.toString?.() ?? '',
+            timeWindow: s.timeWindow ?? '',
+            redFlag: Boolean(s.redFlag ?? true),
+            defaultType: (s.propertyType as ListingType) || 'both',
+            testMode: Boolean(s.testMode ?? false),
+          }));
+        }
+      } catch {}
+    })();
+  }, []);
+
   const SettingsContent = () => (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold text-white">Settings</h1>
@@ -486,11 +637,15 @@ const ZillowDashboard = () => {
                 type="email"
                 placeholder="Zillow Email"
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:border-cyan-500 focus:outline-none"
+                value={settingsForm.zillowEmail}
+                onChange={(e)=> setSettingsForm(v=>({ ...v, zillowEmail: e.target.value }))}
               />
               <input
                 type="password"
                 placeholder="Password (optional)"
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:border-cyan-500 focus:outline-none"
+                value={settingsForm.zillowPassword}
+                onChange={(e)=> setSettingsForm(v=>({ ...v, zillowPassword: e.target.value }))}
               />
             </div>
           </div>
@@ -501,6 +656,8 @@ const ZillowDashboard = () => {
               type="url"
               placeholder="Google Sheet URL for logs"
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:border-cyan-500 focus:outline-none"
+              value={settingsForm.googleSheetUrl}
+              onChange={(e)=> setSettingsForm(v=>({ ...v, googleSheetUrl: e.target.value }))}
             />
           </div>
         </div>
@@ -518,14 +675,18 @@ const ZillowDashboard = () => {
                 type="number"
                 placeholder="Max Price"
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:border-cyan-500 focus:outline-none"
+                value={settingsForm.maxPrice}
+                onChange={(e)=> setSettingsForm(v=>({ ...v, maxPrice: e.target.value }))}
               />
               <input
                 type="number"
                 placeholder="Min Bedrooms"
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:border-cyan-500 focus:outline-none"
+                value={settingsForm.minBedrooms}
+                onChange={(e)=> setSettingsForm(v=>({ ...v, minBedrooms: e.target.value }))}
               />
               <label className="flex items-center text-gray-300">
-                <input type="checkbox" className="mr-3 text-cyan-500" defaultChecked />
+                <input type="checkbox" className="mr-3 text-cyan-500" checked={settingsForm.redFlag} onChange={(e)=> setSettingsForm(v=>({ ...v, redFlag: e.target.checked }))} />
                 Auto-detect Red Flags
               </label>
             </div>
@@ -538,11 +699,15 @@ const ZillowDashboard = () => {
                 type="number"
                 placeholder="Messages per day (e.g. 5)"
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:border-cyan-500 focus:outline-none"
+                value={settingsForm.dailyMessageLimit}
+                onChange={(e)=> setSettingsForm(v=>({ ...v, dailyMessageLimit: e.target.value }))}
               />
               <input
                 type="text"
                 placeholder="Time range (e.g. 10am-6pm)"
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:border-cyan-500 focus:outline-none"
+                value={settingsForm.timeWindow}
+                onChange={(e)=> setSettingsForm(v=>({ ...v, timeWindow: e.target.value }))}
               />
             </div>
           </div>
@@ -550,7 +715,24 @@ const ZillowDashboard = () => {
       </div>
 
       <div className="flex justify-end">
-        <button className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-medium py-3 px-6 rounded-lg transition-all duration-300 flex items-center">
+        <button className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-medium py-3 px-6 rounded-lg transition-all duration-300 flex items-center"
+          onClick={async ()=>{
+            try {
+              await api.saveSettings({
+                zillowEmail: settingsForm.zillowEmail,
+                zillowPassword: settingsForm.zillowPassword || undefined,
+                googleSheetUrl: settingsForm.googleSheetUrl,
+                minBedrooms: settingsForm.minBedrooms ? Number(settingsForm.minBedrooms) : undefined,
+                maxPrice: settingsForm.maxPrice ? Number(settingsForm.maxPrice) : undefined,
+                dailyMessageLimit: settingsForm.dailyMessageLimit ? Number(settingsForm.dailyMessageLimit) : undefined,
+                timeWindow: settingsForm.timeWindow,
+                redFlag: settingsForm.redFlag,
+                propertyType: settingsForm.defaultType,
+                testMode: settingsForm.testMode,
+              });
+            } catch {}
+          }}
+        >
           <Save className="w-5 h-5 mr-2" />
           Save Settings
         </button>
