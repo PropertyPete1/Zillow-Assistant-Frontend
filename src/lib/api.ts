@@ -1,76 +1,42 @@
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+import type { AppSettings, Listing, MessageResult, LogRow } from '@/types';
 
-const getBaseUrl = (): string => {
-  const envUrl = import.meta.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL;
-  return (envUrl as string) || 'http://localhost:3001';
-};
+const BASE = process.env.NEXT_PUBLIC_API_URL as string;
 
-export async function apiFetch<TResponse = any>(
-  path: string,
-  options: {
-    method?: HttpMethod;
-    body?: unknown;
-    headers?: Record<string, string>;
-    signal?: AbortSignal;
-  } = {}
-): Promise<TResponse> {
-  const baseUrl = getBaseUrl();
-  const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
-  const { method = 'GET', body, headers = {}, signal } = options;
-
-  const res = await fetch(url, {
-    method,
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
     headers: {
       'Content-Type': 'application/json',
-      ...headers,
+      ...(init?.headers || {}),
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal,
+    cache: 'no-store',
   });
-
-  const text = await res.text();
-  let data: any = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    // non-JSON response
-    data = text as any;
-  }
-
   if (!res.ok) {
-    const message = (data && (data.error?.message || data.message || data.error)) || `Request failed (${res.status})`;
-    throw new Error(message);
+    const msg = await res.text().catch(() => res.statusText);
+    throw new Error(msg || `Request failed: ${res.status}`);
   }
-
-  return data as TResponse;
+  return res.json() as Promise<T>;
 }
 
-export const api = {
+export const Api = {
   // Settings
-  getSettings: () => apiFetch('/api/settings'),
-  saveSettings: (payload: any) => apiFetch('/api/settings', { method: 'POST', body: payload }),
-  setPropertyType: (propertyType: string) => apiFetch('/api/settings', { method: 'POST', body: { propertyType } }),
+  getSettings: () => api<AppSettings>('/api/settings'),
+  saveSettings: (payload: Partial<AppSettings>) =>
+    api<AppSettings>('/api/settings', { method: 'POST', body: JSON.stringify(payload) }),
 
   // Scraper
-  runScraper: async (payload: { propertyType: string; zipCodes?: string[]; filters?: Record<string, boolean> }) => {
-    try {
-      return await apiFetch('/api/scraper/run', { method: 'POST', body: payload });
-    } catch (err: any) {
-      // Fallback for backends that use /search instead of /run
-      return await apiFetch('/api/scraper/search', { method: 'POST', body: payload });
-    }
-  },
-  getScraperStatus: () => apiFetch('/api/scraper/status'),
-  getListings: () => apiFetch('/api/scraper/listings'),
+  runScraper: (payload: { propertyType: 'rent' | 'sale' | 'both'; zipCodes: string[] }) =>
+    api<{ listings: Listing[] }>('/api/scraper/run', { method: 'POST', body: JSON.stringify(payload) }),
 
-  // Messages
-  listMessages: () => apiFetch('/api/messages'),
-  sendMessage: (payload: any) => apiFetch('/api/messages/send', { method: 'POST', body: payload }),
-  regenerateMessage: (payload: any) => apiFetch('/api/messages/regenerate', { method: 'POST', body: payload }),
-  sendBatch: (payload: { propertyType: string; maxMessages: number }) =>
-    apiFetch('/api/messages/send-batch', { method: 'POST', body: payload }),
+  // Messaging
+  sendMessage: (listing: Listing) =>
+    api<MessageResult>('/api/message/send', { method: 'POST', body: JSON.stringify({ listing }) }),
+
+  sendBatch: (payload: { propertyType: 'rent' | 'sale' | 'both'; maxMessages?: number }) =>
+    api<MessageResult[]>('/api/message/send-batch', { method: 'POST', body: JSON.stringify(payload) }),
 
   // Logs
-  getLogs: () => apiFetch('/api/logs'),
-  exportLogsToSheets: () => apiFetch('/api/logs/export-to-sheets', { method: 'POST' }),
+  getLogs: () => api<LogRow[]>('/api/logs'),
+  exportLogsToSheets: () => api<{ ok: true }>('/api/logs/export-to-sheets', { method: 'POST' }),
 };
+
