@@ -27,10 +27,13 @@ export const Api = {
   // Scraper
   runScraper: (payload: { propertyType: 'rent' | 'sale' | 'both'; zipCodes: string[]; filters?: ScraperFilters }) =>
     api<{ listings: Listing[] }>('/api/scraper/run', { method: 'POST', body: JSON.stringify(payload) }),
+  getScraperStatus: () => api<any>('/api/scraper/status'),
 
   // Messaging
   sendMessage: (listing: Listing) =>
     api<MessageResult>('/api/message/send', { method: 'POST', body: JSON.stringify({ listing }) }),
+  regenerateMessage: (listing: Listing) =>
+    api<{ message: string }>('/api/message/regenerate', { method: 'POST', body: JSON.stringify({ listing }) }),
 
   sendBatch: (payload: { propertyType: 'rent' | 'sale' | 'both'; maxMessages?: number }) =>
     api<MessageResult[]>('/api/message/send-batch', { method: 'POST', body: JSON.stringify(payload) }),
@@ -38,5 +41,10 @@ export const Api = {
   // Logs
   getLogs: () => api<LogRow[]>('/api/logs'),
   exportLogsToSheets: () => api<{ ok: true }>('/api/logs/export-to-sheets', { method: 'POST' }),
+
+  // Test & Analytics
+  testMessage: (payload: { listing?: Listing }) => api<any>('/api/message/test', { method: 'POST', body: JSON.stringify(payload) }),
+  previewMessage: (payload: { listing: Listing }) => api<{ message: string }>('/api/message/preview', { method: 'POST', body: JSON.stringify(payload) }),
+  getAnalytics: () => api<any>('/api/analytics'),
 };
 

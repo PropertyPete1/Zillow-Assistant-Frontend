@@ -82,10 +82,16 @@ export default function MessagesPage() {
                 <div className="opacity-80 text-sm">{l.ownerName}</div>
                 <div className="opacity-60 text-sm mb-2">{l.price} • {l.bedrooms} bd</div>
                 <div className="flex items-center gap-2">
-                  <button className="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-500" onClick={() => sendOne(l)}>
+                  <button className="px-3 py-2 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50" onClick={() => sendOne(l)}>
                     Send Message
                   </button>
-                  <a className="px-3 py-1 rounded bg-white/10 hover:bg-white/20" href={l.link} target="_blank">Open Listing</a>
+                  <button className="px-3 py-2 rounded bg-white/10 hover:bg-white/20" onClick={async ()=>{
+                    try {
+                      const r = await Api.regenerateMessage(l);
+                      toast.success('Message regenerated');
+                    } catch(e:any){ toast.error(e.message||'Regenerate failed'); }
+                  }}>Regenerate</button>
+                  <a className="px-3 py-2 rounded bg-white/10 hover:bg-white/20" href={l.link} target="_blank">Open Listing</a>
                 </div>
                 {r && (
                   <div className={`mt-2 text-sm ${r.status === 'sent' ? 'text-green-400' : 'text-red-400'}`}>
