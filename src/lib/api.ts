@@ -1,4 +1,4 @@
-import type { AppSettings, Listing, MessageResult, LogRow } from '@/types';
+import type { AppSettings, Listing, MessageResult, LogRow, ScraperFilters } from '@/types';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL as string;
 
@@ -25,7 +25,7 @@ export const Api = {
     api<AppSettings>('/api/settings', { method: 'POST', body: JSON.stringify(payload) }),
 
   // Scraper
-  runScraper: (payload: { propertyType: 'rent' | 'sale' | 'both'; zipCodes: string[] }) =>
+  runScraper: (payload: { propertyType: 'rent' | 'sale' | 'both'; zipCodes: string[]; filters?: ScraperFilters }) =>
     api<{ listings: Listing[] }>('/api/scraper/run', { method: 'POST', body: JSON.stringify(payload) }),
 
   // Messaging

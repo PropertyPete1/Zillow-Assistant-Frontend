@@ -41,4 +41,10 @@ export interface LogRow {
   redFlags?: string;
 }
 
+export interface ScraperFilters {
+  alreadyRented?: boolean;
+  noAgents?: boolean;
+  duplicatePhotos?: boolean;
+}
+
 

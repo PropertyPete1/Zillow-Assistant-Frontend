@@ -3,10 +3,12 @@ import React, { useEffect, useState } from 'react';
 import { Shell } from '@/components/Shell';
 import { Api } from '@/lib/api';
 import type { LogRow } from '@/types';
+import { useToast } from '@/components/Toast';
 
 export default function LogsPage() {
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const { push } = useToast();
 
   const load = async () => {
     setLoading(true);
@@ -21,8 +23,12 @@ export default function LogsPage() {
   useEffect(() => { load(); }, []);
 
   const exportSheets = async () => {
-    await Api.exportLogsToSheets();
-    alert('Exported to Google Sheets');
+    try {
+      await Api.exportLogsToSheets();
+      push('success', 'Exported to Google Sheets');
+    } catch (e: any) {
+      push('error', e.message || 'Export failed');
+    }
   };
 
   return (

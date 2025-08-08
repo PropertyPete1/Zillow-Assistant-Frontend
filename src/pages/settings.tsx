@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Shell } from '@/components/Shell';
 import { useSettings } from '@/context/SettingsContext';
+import { useToast } from '@/components/Toast';
 
 export default function SettingsPage() {
   const { settings, loading, update } = useSettings();
@@ -11,10 +12,16 @@ export default function SettingsPage() {
 
   const set = (k: any, v: any) => setForm((f: any) => ({ ...(f || {}), [k]: v }));
 
+  const { push } = useToast();
+
   const save = async () => {
     if (!form) return;
-    await update(form);
-    alert('Settings saved');
+    try {
+      await update(form);
+      push('success', 'Settings saved');
+    } catch (e: any) {
+      push('error', e.message || 'Failed to save settings');
+    }
   };
 
   if (loading || !form) return <Shell><div>Loading settings…</div></Shell>;

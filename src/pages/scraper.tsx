@@ -5,6 +5,7 @@ import { useSettings } from '@/context/SettingsContext';
 import { PropertyTypeToggle } from '@/components/PropertyTypeToggle';
 import { Api } from '@/lib/api';
 import type { Listing } from '@/types';
+import { useToast } from '@/components/Toast';
 
 export default function ScraperPage() {
   const { settings } = useSettings();
@@ -12,16 +13,26 @@ export default function ScraperPage() {
   const [loading, setLoading] = useState(false);
   const [listings, setListings] = useState<Listing[]>([]);
   const [error, setError] = useState<string | undefined>();
+  const [fAlready, setFAlready] = useState(true);
+  const [fAgents, setFAgents] = useState(true);
+  const [fDupPhotos, setFDupPhotos] = useState(true);
+  const { push } = useToast();
 
   const run = async () => {
     if (!zip.trim()) return setError('Enter at least one zip code (comma separated allowed).');
     setLoading(true); setError(undefined);
     try {
       const zipCodes = zip.split(',').map(z => z.trim()).filter(Boolean);
-      const res = await Api.runScraper({ propertyType: settings?.propertyType || 'rent', zipCodes });
+      const res = await Api.runScraper({ propertyType: settings?.propertyType || 'rent', zipCodes, filters: {
+        alreadyRented: fAlready,
+        noAgents: fAgents,
+        duplicatePhotos: fDupPhotos,
+      }});
       setListings(res.listings);
+      push('success', `Scraped ${res.listings.length} listings`);
     } catch (e: any) {
       setError(e.message || 'Scraper failed');
+      push('error', e.message || 'Scraper failed');
     } finally {
       setLoading(false);
     }
@@ -48,6 +59,21 @@ export default function ScraperPage() {
         >
           {loading ? 'Scraping…' : 'Start Zillow Search'}
         </button>
+      </div>
+
+      <div className="flex items-center gap-6 mb-4">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={fAlready} onChange={e=>setFAlready(e.target.checked)} />
+          <span className="text-sm opacity-80">Skip "Already Rented"</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={fAgents} onChange={e=>setFAgents(e.target.checked)} />
+          <span className="text-sm opacity-80">Skip "No Agents"</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={fDupPhotos} onChange={e=>setFDupPhotos(e.target.checked)} />
+          <span className="text-sm opacity-80">Skip duplicate photos</span>
+        </label>
       </div>
 
       {error && <div className="text-red-400 mb-3">{error}</div>}
