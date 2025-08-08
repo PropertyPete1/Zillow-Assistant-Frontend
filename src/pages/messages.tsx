@@ -5,28 +5,29 @@ import { useSettings } from '@/context/SettingsContext';
 import { PropertyTypeToggle } from '@/components/PropertyTypeToggle';
 import { Api } from '@/lib/api';
 import type { Listing, MessageResult } from '@/types';
-import { useToast } from '@/components/Toast';
+import { useListingsStore } from '@/store/listings';
+import toast from 'react-hot-toast';
 
 export default function MessagesPage() {
   const { settings } = useSettings();
   const [listings, setListings] = useState<Listing[]>([]);
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState<Record<string, MessageResult>>({});
-  const { push } = useToast();
+  const storeListings = useListingsStore(s => s.listings);
 
   useEffect(() => {
-    // Load strategy can be improved to share state from scraper
-  }, []);
+    if (storeListings.length) setListings(storeListings);
+  }, [storeListings]);
 
   const sendOne = async (l: Listing) => {
     setResults(r => ({ ...r, [l.address]: { address: l.address, status: 'sent' } })); // optimistic
     try {
       const res = await Api.sendMessage(l);
       setResults(r => ({ ...r, [l.address]: res }));
-      push('success', `Sent: ${l.address}`);
+      toast.success(`Sent: ${l.address}`);
     } catch (e: any) {
       setResults(r => ({ ...r, [l.address]: { address: l.address, status: 'failed', reason: e.message } }));
-      push('error', e.message || 'Failed to send');
+      toast.error(e.message || 'Send failed');
     }
   };
 
@@ -41,9 +42,9 @@ export default function MessagesPage() {
       const map: Record<string, MessageResult> = {};
       res.forEach(r => (map[r.address] = r));
       setResults(map);
-      push('success', `Batch complete: ${res.length} results`);
+      toast.success('Batch complete');
     } catch (e: any) {
-      push('error', e.message || 'Batch failed');
+      toast.error(e.message || 'Batch failed');
     } finally {
       setSending(false);
     }

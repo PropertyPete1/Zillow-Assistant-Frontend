@@ -5,7 +5,8 @@ import { useSettings } from '@/context/SettingsContext';
 import { PropertyTypeToggle } from '@/components/PropertyTypeToggle';
 import { Api } from '@/lib/api';
 import type { Listing } from '@/types';
-import { useToast } from '@/components/Toast';
+import toast from 'react-hot-toast';
+import { useListingsStore } from '@/store/listings';
 
 export default function ScraperPage() {
   const { settings } = useSettings();
@@ -16,7 +17,7 @@ export default function ScraperPage() {
   const [fAlready, setFAlready] = useState(true);
   const [fAgents, setFAgents] = useState(true);
   const [fDupPhotos, setFDupPhotos] = useState(true);
-  const { push } = useToast();
+  const setStoreListings = useListingsStore(s => s.setListings);
 
   const run = async () => {
     if (!zip.trim()) return setError('Enter at least one zip code (comma separated allowed).');
@@ -29,10 +30,11 @@ export default function ScraperPage() {
         duplicatePhotos: fDupPhotos,
       }});
       setListings(res.listings);
-      push('success', `Scraped ${res.listings.length} listings`);
+      setStoreListings(res.listings);
+      toast.success(`Loaded ${res.listings.length} listings`);
     } catch (e: any) {
       setError(e.message || 'Scraper failed');
-      push('error', e.message || 'Scraper failed');
+      toast.error(e.message || 'Scraper failed');
     } finally {
       setLoading(false);
     }

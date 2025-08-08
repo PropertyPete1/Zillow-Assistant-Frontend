@@ -1,15 +1,14 @@
 import type { AppProps } from 'next/app';
 import '@/styles/globals.css';
 import { SettingsProvider } from '@/context/SettingsContext';
-import { ToastProvider } from '@/components/Toast';
+import { Toaster } from 'react-hot-toast';
 
 export default function App({ Component, pageProps }: AppProps) {
   return (
-    <ToastProvider>
-      <SettingsProvider>
-        <Component {...pageProps} />
-      </SettingsProvider>
-    </ToastProvider>
+    <SettingsProvider>
+      <Toaster position="top-right" />
+      <Component {...pageProps} />
+    </SettingsProvider>
   );
 }
 
