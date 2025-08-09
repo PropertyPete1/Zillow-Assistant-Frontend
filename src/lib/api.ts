@@ -72,3 +72,10 @@ export const Api = {
   getAnalytics: () => api<any>('/api/analytics'),
 };
 
+// Helper to drive loading spinners in components
+export async function withLoading<T>(setLoading: (b: boolean) => void, fn: () => Promise<T>): Promise<T> {
+  setLoading(true);
+  try { return await fn(); }
+  finally { setLoading(false); }
+}
+

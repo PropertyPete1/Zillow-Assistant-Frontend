@@ -22,23 +22,29 @@ export default function ScraperPage() {
 
   const run = async () => {
     if (!zip.trim()) return setError('Enter at least one zip code (comma separated allowed).');
-    setLoading(true); setError(undefined);
+    setError(undefined);
+    const minBedrooms = (settings as any)?.minBedrooms ?? undefined;
+    const maxPrice = (settings as any)?.maxPrice ?? undefined;
+    setLoading(true);
     try {
       const zipCodes = zip.split(',').map(z => z.trim()).filter(Boolean);
       const res = await Api.runScraper({ propertyType: settings?.propertyType || 'rent', zipCodes, filters: {
-        alreadyRented: fAlready,
-        noAgents: fAgents,
-        duplicatePhotos: fDupPhotos,
-      }});
-      setListings(res.listings);
-      setStoreListings(res.listings);
-      toast.success(`Loaded ${res.listings.length} listings`);
+        skipAlreadyRented: fAlready,
+        skipNoAgents: fAgents,
+        skipDuplicatePhotos: fDupPhotos,
+        minBedrooms,
+        maxPrice,
+      }} as any);
+      const rows = Array.isArray((res as any)?.listings) ? (res as any).listings : [];
+      setListings(rows);
+      setStoreListings(rows);
+      toast.success(`Loaded ${rows.length} listings`);
+      if (!rows.length) setError('No listings returned from scraper.');
     } catch (e: any) {
-      setError(e.message || 'Scraper failed');
-      toast.error(e.message || 'Scraper failed');
-    } finally {
-      setLoading(false);
-    }
+      const msg = e.message || 'Scraper failed';
+      setError(msg);
+      toast.error(msg);
+    } finally { setLoading(false); }
   };
 
   return (
@@ -57,8 +63,8 @@ export default function ScraperPage() {
         />
         <button
           onClick={run}
-          className="px-3 py-2 rounded bg-cyan-600 hover:bg-cyan-500"
-          disabled={loading}
+          className="px-3 py-2 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50"
+          disabled={loading || !zip.trim()}
         >
           {loading ? 'Scraping…' : 'Start Zillow Search'}
         </button>

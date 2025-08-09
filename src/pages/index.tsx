@@ -52,19 +52,16 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-2 text-sm opacity-80">
               <input type="checkbox" checked={!!(settings as any)?.autoMessages} onChange={async (e)=>{
-                try { await update({ autoMessages: e.target.checked } as any); toast.success('Auto messages updated'); } catch(err:any){ toast.error(err.message||'Failed'); }
+                const prev = (settings as any)?.autoMessages;
+                try { await update({ autoMessages: e.target.checked } as any); toast.success('Auto messages updated'); }
+                catch(err:any){ toast.error(err.message||'Failed'); await update({ autoMessages: prev } as any); }
               }} />
               Auto Messages
             </label>
             <button
               id="rerun-scraper"
               className="px-3 py-2 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50"
-              onClick={async ()=>{
-                try {
-                  await Api.runScraper({ propertyType: settings?.propertyType || 'rent', zipCodes: (settings as any)?.zipCodes || [] });
-                  toast.success('Scraper re-run started');
-                } catch(e:any){ toast.error(e.message||'Failed to start scraper'); }
-              }}
+              onClick={()=>{ location.assign('/scraper'); }}
             >
               Re-run Scraper
             </button>

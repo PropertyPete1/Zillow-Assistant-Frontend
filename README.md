@@ -1,4 +1,38 @@
 # Zillow Assistant Frontend
+## FIX REPORT (latest)
+
+- Global
+  - Added env assertion `src/lib/env.ts` to fail fast if `NEXT_PUBLIC_API_URL` missing
+  - Hardened API wrapper `src/lib/api.ts` (JSON headers, detailed errors, CORS-friendly toast, diagnostics console.info)
+  - Introduced `ErrorNote` banners for persistent page errors
+  - Added `withLoading` helper (exported from api.ts) for optional spinner wiring
+
+- Dashboard `/src/pages/index.tsx`
+  - Re-run Scraper now navigates to `/scraper` per spec; Auto Messages toggle persists with rollback on failure
+  - Soft status load with error note if missing
+
+- Scraper `/src/pages/scraper.tsx`
+  - Button disabled until zip entered; includes filters + `minBedrooms`/`maxPrice` in payload
+  - Stores listings for Messages page; shows banner when 0 results
+
+- Messages `/src/pages/messages.tsx`
+  - Per-card send respects disabled state; toasts + error banners maintained
+  - Send All maintains disabled state and error handling
+
+- Logs `/src/pages/logs.tsx`
+  - Robust load + export with error banner and toasts
+
+- Backend (Render)
+  - Non-blocking Mongo connect; `/health` includes `dbConnected`
+  - Added missing routes: messages, logs, settings, analytics; aligned `/api/scraper/run`
+
+Remaining
+  - Dashboard mode toggle toast + rollback on failure (currently optimistic)
+  - Messages: show `[Test Mode]` tag when applicable
+  - Logs: disable Export if `googleSheetUrl` blank
+  - Settings: validate `messageWindow` (end > start)
+
+# Zillow Assistant Frontend
 
 A modern, responsive React dashboard for the Zillow Assistant automation tool. This frontend provides a beautiful interface for managing Zillow property scraping, messaging, and analytics.
 

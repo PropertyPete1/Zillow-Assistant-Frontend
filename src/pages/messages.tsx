@@ -86,7 +86,11 @@ export default function MessagesPage() {
                 <div className="opacity-80 text-sm">{l.ownerName}</div>
                 <div className="opacity-60 text-sm mb-2">{l.price} • {l.bedrooms} bd</div>
                 <div className="flex items-center gap-2">
-                  <button className="px-3 py-2 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50" onClick={() => sendOne(l)}>
+                  <button
+                    className="px-3 py-2 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50"
+                    onClick={() => sendOne(l)}
+                    disabled={sending}
+                  >
                     Send Message
                   </button>
                   <button className="px-3 py-2 rounded bg-white/10 hover:bg-white/20" onClick={async ()=>{
