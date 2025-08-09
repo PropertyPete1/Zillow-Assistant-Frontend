@@ -28,17 +28,27 @@ export default function ScraperPage() {
     setLoading(true);
     try {
       const zipCodes = zip.split(',').map(z => z.trim()).filter(Boolean);
-      const res = await Api.runScraper({ propertyType: settings?.propertyType || 'rent', zipCodes, filters: {
+      const payload = { propertyType: settings?.propertyType || 'rent', zipCodes, filters: {
         skipAlreadyRented: fAlready,
         skipNoAgents: fAgents,
         skipDuplicatePhotos: fDupPhotos,
         minBedrooms,
         maxPrice,
-      }} as any);
+      }} as any;
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.info('[ZillowAssistant] scraper/run request', JSON.parse(JSON.stringify(payload, null, 2)));
+      }
+      const res = await Api.runScraper(payload as any);
       const rows = Array.isArray((res as any)?.listings) ? (res as any).listings : [];
       setListings(rows);
       setStoreListings(rows);
       toast.success(`Loaded ${rows.length} listings`);
+      if (process.env.NODE_ENV !== 'production') {
+        const preview = JSON.stringify(res).slice(0, 200);
+        // eslint-disable-next-line no-console
+        console.info('[ZillowAssistant] scraper/run response', { preview });
+      }
       if (!rows.length) setError('No listings returned from scraper.');
     } catch (e: any) {
       const msg = e.message || 'Scraper failed';
