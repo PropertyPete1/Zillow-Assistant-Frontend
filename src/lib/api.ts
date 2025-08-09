@@ -64,7 +64,8 @@ export const Api = {
 
   // Logs
   getLogs: () => api<LogRow[]>('/api/logs'),
-  exportLogsToSheets: () => api<{ ok: true }>('/api/logs/export-to-sheets', { method: 'POST' }),
+  exportLogsToSheets: (payload: any) =>
+    api<{ ok: true }>('/api/logs/export-to-sheets', { method: 'POST', body: JSON.stringify(payload) }),
 
   // Test & Analytics
   testMessage: (payload: { listing?: Listing }) => api<any>('/api/message/test', { method: 'POST', body: JSON.stringify(payload) }),
