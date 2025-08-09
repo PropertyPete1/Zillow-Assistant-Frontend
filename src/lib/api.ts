@@ -1,9 +1,17 @@
 import type { AppSettings, Listing, MessageResult, LogRow, ScraperFilters } from '@/types';
+import { assertEnv } from '@/lib/env';
+import toast from 'react-hot-toast';
 
-const BASE = process.env.NEXT_PUBLIC_API_URL as string;
+const BASE = (() => {
+  try { return assertEnv(); } catch (e: any) {
+    if (typeof window !== 'undefined') toast.error(e.message || 'API URL not configured');
+    return '' as any;
+  }
+})();
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const url = `${BASE}${path}`;
+  const res = await fetch(url, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -12,10 +20,26 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     cache: 'no-store',
   });
   if (!res.ok) {
-    const msg = await res.text().catch(() => res.statusText);
-    throw new Error(msg || `Request failed: ${res.status}`);
+    let detail = '';
+    try { detail = await res.text(); } catch {}
+    let parsed: any; try { parsed = detail ? JSON.parse(detail) : null; } catch {}
+    const message = parsed?.message || parsed?.error || detail || res.statusText;
+    const err = new Error(`API ${res.status} ${path}: ${message}`);
+    if (typeof window !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.info('[ZillowAssistant]', { action: 'api-error', endpoint: path, status: res.status, message });
+      if (message?.includes('Failed to fetch') || res.status === 403 || res.status === 405) {
+        toast.error(`Network error calling ${path}. Check NEXT_PUBLIC_API_URL and CORS on backend.`);
+      }
+    }
+    throw err;
   }
-  return res.json() as Promise<T>;
+  const json = await res.json();
+  if (typeof window !== 'undefined') {
+    // eslint-disable-next-line no-console
+    console.info('[ZillowAssistant]', { action: 'api', endpoint: path, payload: init?.body ? JSON.parse(String(init.body)) : undefined, response: json });
+  }
+  return json as T;
 }
 
 export const Api = {

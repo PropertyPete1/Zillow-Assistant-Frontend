@@ -4,16 +4,20 @@ import { Shell } from '@/components/Shell';
 import { Api } from '@/lib/api';
 import type { LogRow } from '@/types';
 import toast from 'react-hot-toast';
+import { ErrorNote } from '@/components/ErrorNote';
 
 export default function LogsPage() {
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>();
 
   const load = async () => {
     setLoading(true);
     try {
       const data = await Api.getLogs();
-      setRows(data);
+      setRows(Array.isArray(data) ? data : []);
+    } catch (e:any) {
+      setError(e.message || 'Failed to load logs');
     } finally {
       setLoading(false);
     }
@@ -26,12 +30,15 @@ export default function LogsPage() {
       await Api.exportLogsToSheets();
       toast.success('Exported to Google Sheets');
     } catch (e: any) {
-      toast.error(e.message || 'Export failed');
+      const msg = e.message || 'Export failed';
+      toast.error(msg);
+      setError(msg);
     }
   };
 
   return (
     <Shell>
+      <ErrorNote message={error} />
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-semibold">Logs</h1>
         <button onClick={exportSheets} className="px-3 py-2 rounded bg-cyan-600 hover:bg-cyan-500">Export to Sheets</button>

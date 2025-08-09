@@ -7,6 +7,7 @@ import { Api } from '@/lib/api';
 import type { Listing } from '@/types';
 import toast from 'react-hot-toast';
 import { useListingsStore } from '@/store/listings';
+import { ErrorNote } from '@/components/ErrorNote';
 
 export default function ScraperPage() {
   const { settings } = useSettings();
@@ -63,6 +64,7 @@ export default function ScraperPage() {
         </button>
       </div>
 
+      <ErrorNote message={error} />
       <div className="flex items-center gap-6 mb-4">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={fAlready} onChange={e=>setFAlready(e.target.checked)} />

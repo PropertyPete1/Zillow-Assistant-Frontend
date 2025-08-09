@@ -4,14 +4,17 @@ import { useSettings } from '@/context/SettingsContext';
 import { PropertyTypeToggle } from '@/components/PropertyTypeToggle';
 import { Api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { ErrorNote } from '@/components/ErrorNote';
 
 export default function DashboardPage() {
   const { settings, loading, update } = useSettings();
   const [status, setStatus] = useState<any>(null);
+  const [error, setError] = useState<string | undefined>();
 
   useEffect(() => {
     (async () => {
-      try { const s = await Api.getScraperStatus(); setStatus(s); } catch {}
+      try { const s = await Api.getScraperStatus(); setStatus(s); }
+      catch (e:any) { setError(e.message || 'Failed to load status'); }
     })();
   }, []);
   return (
@@ -21,6 +24,7 @@ export default function DashboardPage() {
         <PropertyTypeToggle />
       </div>
 
+      <ErrorNote message={error} />
       {loading ? (
         <div>Loading settings…</div>
       ) : (

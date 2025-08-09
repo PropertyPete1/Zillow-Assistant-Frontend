@@ -7,6 +7,7 @@ import { Api } from '@/lib/api';
 import type { Listing, MessageResult } from '@/types';
 import { useListingsStore } from '@/store/listings';
 import toast from 'react-hot-toast';
+import { ErrorNote } from '@/components/ErrorNote';
 
 export default function MessagesPage() {
   const { settings } = useSettings();
@@ -14,6 +15,7 @@ export default function MessagesPage() {
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState<Record<string, MessageResult>>({});
   const storeListings = useListingsStore(s => s.listings);
+  const [error, setError] = useState<string | undefined>();
 
   useEffect(() => {
     if (storeListings.length) setListings(storeListings);
@@ -45,6 +47,7 @@ export default function MessagesPage() {
       toast.success('Batch complete');
     } catch (e: any) {
       toast.error(e.message || 'Batch failed');
+      setError(e.message || 'Batch failed');
     } finally {
       setSending(false);
     }
@@ -57,6 +60,7 @@ export default function MessagesPage() {
         <PropertyTypeToggle />
       </div>
 
+      <ErrorNote message={error} />
       <div className="flex items-center gap-2 mb-4">
         <button
           className="px-3 py-2 rounded bg-cyan-600 hover:bg-cyan-500"
