@@ -13,6 +13,7 @@ export default function MessagesPage() {
   const { settings } = useSettings();
   const [listings, setListings] = useState<Listing[]>([]);
   const [sending, setSending] = useState(false);
+  const [sendingOne, setSendingOne] = useState<Record<string, boolean>>({});
   const [results, setResults] = useState<Record<string, MessageResult>>({});
   const storeListings = useListingsStore(s => s.listings);
   const [error, setError] = useState<string | undefined>();
@@ -22,21 +23,65 @@ export default function MessagesPage() {
   }, [storeListings]);
 
   const sendOne = async (l: Listing) => {
-    setResults(r => ({ ...r, [l.address]: { address: l.address, status: 'sent' } })); // optimistic
+    setSendingOne(m => ({ ...m, [l.address]: true }));
+    // Optimistic UI
+    setResults(r => ({ ...r, [l.address]: { address: l.address, status: 'sent' } }));
     try {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.info('[ZillowAssistant] message/send request', { endpoint: '/api/message/send', payload: { listing: l } });
+      }
       const res = await Api.sendMessage(l);
       setResults(r => ({ ...r, [l.address]: res }));
-      toast.success(`Sent: ${l.address}`);
+      if (process.env.NODE_ENV !== 'production') {
+        const preview = JSON.stringify(res).slice(0, 200);
+        // eslint-disable-next-line no-console
+        console.info('[ZillowAssistant] message/send response', { preview });
+      }
+      toast.success(`Sent to ${l.address}`);
     } catch (e: any) {
       setResults(r => ({ ...r, [l.address]: { address: l.address, status: 'failed', reason: e.message } }));
       toast.error(e.message || 'Send failed');
+    } finally {
+      setSendingOne(m => ({ ...m, [l.address]: false }));
     }
   };
 
   const sendAll = async () => {
     if (!settings) return;
+    // Optional front-end guard: enforce message window
+    const windowOk = (() => {
+      const [start, end] = (settings.messageWindow || []) as any;
+      if (!start || !end) return true;
+      const now = new Date();
+      const [sh, sm] = String(start).split(':').map((n: string) => parseInt(n, 10));
+      const [eh, em] = String(end).split(':').map((n: string) => parseInt(n, 10));
+      const startMin = sh * 60 + (sm || 0);
+      const endMin = eh * 60 + (em || 0);
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      return nowMin >= startMin && nowMin <= endMin;
+    })();
+    if (!windowOk) {
+      const msg = `Outside allowed time window (${settings.messageWindow?.[0]}–${settings.messageWindow?.[1]})`;
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
+    if ((settings.dailyMessageLimit ?? 0) <= 0) {
+      const msg = 'Daily limit reached.';
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
     setSending(true);
     try {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.info('[ZillowAssistant] message/send-batch request', {
+          endpoint: '/api/message/send-batch',
+          payload: { propertyType: settings.propertyType, maxMessages: settings.dailyMessageLimit },
+        });
+      }
       const res = await Api.sendBatch({
         propertyType: settings.propertyType,
         maxMessages: settings.dailyMessageLimit,
@@ -44,6 +89,11 @@ export default function MessagesPage() {
       const map: Record<string, MessageResult> = {};
       res.forEach(r => (map[r.address] = r));
       setResults(map);
+      if (process.env.NODE_ENV !== 'production') {
+        const preview = JSON.stringify(res).slice(0, 200);
+        // eslint-disable-next-line no-console
+        console.info('[ZillowAssistant] message/send-batch response', { preview });
+      }
       toast.success('Batch complete');
     } catch (e: any) {
       toast.error(e.message || 'Batch failed');
@@ -63,11 +113,12 @@ export default function MessagesPage() {
       <ErrorNote message={error} />
       <div className="flex items-center gap-2 mb-4">
         <button
-          className="px-3 py-2 rounded bg-cyan-600 hover:bg-cyan-500"
+          className="px-3 py-2 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50"
           onClick={sendAll}
-          disabled={sending || !settings}
+          disabled={sending || !settings || (settings.dailyMessageLimit ?? 0) <= 0}
+          title={(settings?.dailyMessageLimit ?? 0) <= 0 ? 'Daily limit reached' : undefined}
         >
-          {sending ? 'Sending…' : 'Send All Messages'}
+          {sending ? 'Sending…' : (settings?.dailyMessageLimit ?? 0) <= 0 ? 'Daily limit reached' : 'Send All Messages'}
         </button>
         <a href="/scraper" className="px-3 py-2 rounded bg-white/10 hover:bg-white/20">Go to Scraper</a>
       </div>
@@ -89,14 +140,23 @@ export default function MessagesPage() {
                   <button
                     className="px-3 py-2 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50"
                     onClick={() => sendOne(l)}
-                    disabled={sending}
+                    disabled={!!sendingOne[l.address] || sending}
                   >
-                    Send Message
+                    {!!sendingOne[l.address] ? 'Sending…' : 'Send Message'}
                   </button>
                   <button className="px-3 py-2 rounded bg-white/10 hover:bg-white/20" onClick={async ()=>{
                     try {
+                      if (process.env.NODE_ENV !== 'production') {
+                        // eslint-disable-next-line no-console
+                        console.info('[ZillowAssistant] message/regenerate request', { endpoint: '/api/message/regenerate', payload: { listing: l } });
+                      }
                       const r = await Api.regenerateMessage(l);
                       toast.success('Message regenerated');
+                      if (process.env.NODE_ENV !== 'production') {
+                        const preview = JSON.stringify(r).slice(0, 200);
+                        // eslint-disable-next-line no-console
+                        console.info('[ZillowAssistant] message/regenerate response', { preview });
+                      }
                     } catch(e:any){ toast.error(e.message||'Regenerate failed'); }
                   }}>Regenerate</button>
                   <a className="px-3 py-2 rounded bg-white/10 hover:bg-white/20" href={l.link} target="_blank">Open Listing</a>
@@ -111,7 +171,11 @@ export default function MessagesPage() {
               </div>
             );
           })}
-          {!listings.length && <div className="opacity-60">No listings loaded. Scrape first.</div>}
+          {!listings.length && (
+            <div className="opacity-80">
+              No listings loaded. <a className="underline text-cyan-400" href="/scraper">Go to Scraper</a>.
+            </div>
+          )}
         </div>
       </div>
     </Shell>
