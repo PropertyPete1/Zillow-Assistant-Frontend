@@ -12,6 +12,7 @@ import { ErrorNote } from '@/components/ErrorNote';
 export default function ScraperPage() {
   const { settings } = useSettings();
   const [zip, setZip] = useState('');
+  const [cityQuery, setCityQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [listings, setListings] = useState<Listing[]>([]);
   const [error, setError] = useState<string | undefined>();
@@ -21,14 +22,14 @@ export default function ScraperPage() {
   const setStoreListings = useListingsStore(s => s.setListings);
 
   const run = async () => {
-    if (!zip.trim()) return setError('Enter at least one zip code (comma separated allowed).');
+    if (!zip.trim() && !cityQuery.trim()) return setError('Enter a city or at least one zip code.');
     setError(undefined);
     const minBedrooms = (settings as any)?.minBedrooms ?? undefined;
     const maxPrice = (settings as any)?.maxPrice ?? undefined;
     setLoading(true);
     try {
       const zipCodes = zip.split(',').map(z => z.trim()).filter(Boolean);
-      const payload = { propertyType: settings?.propertyType || 'rent', zipCodes, filters: {
+      const payload = { propertyType: settings?.propertyType || 'rent', zipCodes, cityQuery: cityQuery.trim() || undefined, filters: {
         skipAlreadyRented: fAlready,
         skipNoAgents: fAgents,
         skipDuplicatePhotos: fDupPhotos,
@@ -67,6 +68,12 @@ export default function ScraperPage() {
       <div className="grid gap-3 md:grid-cols-3 mb-4">
         <input
           className="px-3 py-2 rounded bg-white/5 border border-white/10"
+          placeholder="Enter city or ZIP"
+          value={cityQuery}
+          onChange={e => setCityQuery(e.target.value)}
+        />
+        <input
+          className="px-3 py-2 rounded bg-white/5 border border-white/10"
           placeholder="Zip codes, e.g. 78704, 78745"
           value={zip}
           onChange={e => setZip(e.target.value)}
@@ -74,7 +81,7 @@ export default function ScraperPage() {
         <button
           onClick={run}
           className="px-3 py-2 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50"
-          disabled={loading || !zip.trim()}
+          disabled={loading || (!zip.trim() && !cityQuery.trim())}
         >
           {loading ? 'Scraping…' : 'Start Zillow Search'}
         </button>

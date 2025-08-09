@@ -49,7 +49,7 @@ export const Api = {
     api<AppSettings>('/api/settings', { method: 'POST', body: JSON.stringify(payload) }),
 
   // Scraper
-  runScraper: (payload: { propertyType: 'rent' | 'sale' | 'both'; zipCodes: string[]; filters?: ScraperFilters }) =>
+  runScraper: (payload: { propertyType: 'rent' | 'sale' | 'both'; zipCodes: string[]; filters?: ScraperFilters; cityQuery?: string }) =>
     api<{ listings: Listing[] }>('/api/scraper/run', { method: 'POST', body: JSON.stringify(payload) }),
   getScraperStatus: () => api<any>('/api/scraper/status'),
 
