@@ -13,8 +13,20 @@ export default function DashboardPage() {
 
   useEffect(() => {
     (async () => {
-      try { const s = await Api.getScraperStatus(); setStatus(s); }
-      catch (e:any) { setError(e.message || 'Failed to load status'); }
+      try {
+        const s = await Api.getScraperStatus();
+        setStatus(s);
+      } catch (e: any) {
+        const msg: string = e?.message || 'Failed to load status';
+        // If /status is not implemented, log once and fall back to a safe placeholder (no banner)
+        if (msg.includes('404') || msg.includes('Not Found') || msg.includes('/api/scraper/status')) {
+          // eslint-disable-next-line no-console
+          console.info('[ZillowAssistant] Scraper status endpoint missing; showing placeholder.');
+        } else {
+          setError(msg);
+          toast.error('Failed to load scraper status');
+        }
+      }
     })();
   }, []);
   return (
@@ -67,7 +79,7 @@ export default function DashboardPage() {
             </button>
           </div>
         </div>
-        <p className="opacity-70 mt-2 text-sm">{status ? JSON.stringify(status) : 'Status loading…'}</p>
+        <p className="opacity-70 mt-2 text-sm">{status ? JSON.stringify(status) : '—'}</p>
       </div>
     </Shell>
   );
