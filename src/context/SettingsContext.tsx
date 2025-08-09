@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Api } from '@/lib/api';
 import type { AppSettings, PropertyType } from '@/types';
+import toast from 'react-hot-toast';
 
 type Ctx = {
   settings: AppSettings | null;
@@ -35,9 +36,24 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const update = async (patch: Partial<AppSettings>) => {
     const next = await Api.saveSettings({ ...(settings || {}), ...patch });
     setSettings(next);
+    return next;
   };
 
-  const setPropertyType = async (mode: PropertyType) => update({ propertyType: mode });
+  const setPropertyType = async (mode: PropertyType) => {
+    const prev = settings?.propertyType;
+    // Optimistic UI
+    setSettings(s => (s ? { ...s, propertyType: mode } : s));
+    try {
+      const next = await update({ propertyType: mode });
+      toast.success(`Mode updated to ${next.propertyType?.toUpperCase?.() || mode.toUpperCase()}`);
+      return true;
+    } catch (e: any) {
+      // Rollback
+      setSettings(s => (s ? { ...s, propertyType: prev || 'rent' } : s));
+      toast.error(e?.message || 'Failed to update mode');
+      return false;
+    }
+  };
 
   useEffect(() => {
     refresh();
