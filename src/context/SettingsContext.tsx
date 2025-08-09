@@ -9,8 +9,8 @@ type Ctx = {
   loading: boolean;
   error?: string;
   refresh: () => Promise<void>;
-  update: (patch: Partial<AppSettings>) => Promise<void>;
-  setPropertyType: (mode: PropertyType) => Promise<void>;
+  update: (patch: Partial<AppSettings>) => Promise<AppSettings>;
+  setPropertyType: (mode: PropertyType) => Promise<boolean>;
 };
 
 const SettingsContext = createContext<Ctx | null>(null);
