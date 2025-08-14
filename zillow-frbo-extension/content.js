@@ -1,59 +1,106 @@
+// content.js — Zillow search page collector (uses storage keys: api, skipAgents)
 (function () {
-  if (document.getElementById('collect-visible-results-btn')) return;
+  if (document.getElementById('frbo-collector')) return;
 
-  const btn = document.createElement('button');
-  btn.id = 'collect-visible-results-btn';
-  btn.innerText = 'Collect visible results → Add to queue';
-  btn.style.position = 'fixed';
-  btn.style.top = '80px';
-  btn.style.right = '20px';
-  btn.style.zIndex = '99999';
-  btn.style.backgroundColor = '#2c82c9';
-  btn.style.color = '#fff';
-  btn.style.border = 'none';
-  btn.style.padding = '10px 15px';
-  btn.style.borderRadius = '6px';
-  btn.style.cursor = 'pointer';
-  btn.style.fontSize = '14px';
-  btn.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+  const DEFAULTS = { api: 'https://zillow-assistant-backend.onrender.com', skipAgents: true };
+  let cfg = { ...DEFAULTS };
 
-  document.body.appendChild(btn);
+  chrome.storage.sync.get(DEFAULTS).then(s => { cfg = { ...cfg, ...s }; init(); });
 
-  btn.addEventListener('click', async () => {
+  function init() {
+    if (!isSearchPage()) return;
+    injectButton();
+    new MutationObserver(() => ensureButton()).observe(document.body, { childList: true, subtree: true });
+  }
+
+  function isSearchPage() {
+    const p = location.pathname;
+    return /\/homes\//i.test(p) || /\/rentals\//i.test(p) || /\/b\/.*-rentals/i.test(p);
+  }
+
+  function $all(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
+  function normalizeUrl(u) {
+    try { const x = new URL(u, location.href); x.hash=''; x.search=''; return x.toString(); }
+    catch { return u; }
+  }
+
+  function detectAgentFromCard(card) {
+    const t = (card.innerText || '').toLowerCase();
+    const agent  = /listing agent|brokered by|property manager|managed by|realtor|brokerage/.test(t);
+    const owner  = /for rent by owner|listed by owner|owner managed|message owner|landlord/.test(t);
+    if (agent && !owner) return 'agent';
+    if (owner && !agent) return 'owner';
+    return 'unknown';
+  }
+
+  function collectVisibleRows() {
+    const found = new Map();
+    // prefer card-level detection
+    $all('article, li').forEach(card => {
+      const a = card.querySelector('a[href*="/homedetails/"]');
+      if (!a) return;
+      const url = normalizeUrl(a.href || a.getAttribute('href') || '');
+      if (!url.includes('/homedetails/')) return;
+      const tag = detectAgentFromCard(card);
+      found.set(url, { url, _tag: tag });
+    });
+    // add any stray anchors
+    $all('a[href*="/homedetails/"]').forEach(a => {
+      const url = normalizeUrl(a.href || a.getAttribute('href') || '');
+      if (!url.includes('/homedetails/')) return;
+      if (!found.has(url)) found.set(url, { url, _tag: 'unknown' });
+    });
+    let rows = Array.from(found.values());
+    if (cfg.skipAgents) rows = rows.filter(r => r._tag !== 'agent');
+    return rows.map(r => ({ url: r.url, status: 'queued' }));
+  }
+
+  function ensureButton() { if (!document.getElementById('frbo-collector')) injectButton(); }
+
+  function injectButton() {
+    const btn = document.createElement('button');
+    btn.id = 'frbo-collector';
+    btn.className = 'frbo-collect-btn';
+    btn.textContent = 'Collect visible results → Add to queue';
+    btn.addEventListener('click', onCollectClick);
+    document.documentElement.appendChild(btn);
+  }
+
+  async function onCollectClick() {
     try {
-      const saved = await chrome.storage.sync.get({ api: '', backendUrl: '' });
-      const apiBase = String(saved.api || saved.backendUrl || '').trim().replace(/\/+$/, '');
-      if (!apiBase) {
-        alert('Backend URL not set. Please open the extension popup and save it.');
-        return;
-      }
+      const api = (cfg.api || '').replace(/\/+$/,'');
+      if (!api) return toast('Set Backend URL in the popup first.', 'err');
+      toast('Scanning page…', 'info');
+      const rows = collectVisibleRows();
+      if (!rows.length) return toast('No listings detected.', 'warn');
 
-      const links = Array.from(document.querySelectorAll('a'))
-        .map(a => a.href)
-        .filter(href => /https?:\/\/(www\.)?zillow\.com\/homedetails\//i.test(href))
-        .filter((v, i, arr) => arr.indexOf(v) === i);
-
-      if (!links.length) {
-        alert('No listings found on this page.');
-        return;
-      }
-
-      const rows = links.map(url => ({ url, status: 'queued' }));
-      const res = await fetch(`${apiBase}/api/leads/ingest`, {
+      const r = await fetch(`${api}/api/leads/ingest`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type':'application/json' },
         body: JSON.stringify({ rows })
       });
-      if (res.ok) {
-        alert(`Added ${rows.length} listings to queue.`);
-      } else {
-        alert('Error adding listings to queue.');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Failed to send listings to backend.');
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      toast(`Queued ${rows.length} URL(s).`, 'ok');
+    } catch (e) {
+      console.error('[FRBO] ingest failed:', e);
+      toast('Failed to queue. Check Backend URL.', 'err');
     }
-  });
+  }
+
+  function toast(msg, kind='ok') {
+    let el = document.getElementById('frbo-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'frbo-toast';
+      el.className = 'frbo-toast';
+      document.documentElement.appendChild(el);
+    }
+    el.textContent = msg;
+    el.setAttribute('data-kind', kind);
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('show'), 2500);
+  }
 })();
 
 
