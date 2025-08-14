@@ -103,4 +103,66 @@
   }
 })();
 
+// Listing page HUD for Mark Sent / Skip (proxied via background)
+(function listingHud() {
+  if (!/\/homedetails\//i.test(location.pathname)) return;
+  if (document.getElementById('frbo-hud')) return;
+
+  const hud = document.createElement('div');
+  hud.id = 'frbo-hud';
+  hud.style.cssText = `
+    position: fixed; top: 14px; right: 14px; z-index: 2147483647;
+    background: #111; color: #fff; border: 1px solid #444; border-radius: 10px;
+    padding: 10px; width: 280px; font: 12px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  `;
+  hud.innerHTML = `
+    <div style="font-weight:600; margin-bottom:6px;">FRBO Helper</div>
+    <label style="display:flex;align-items:center;gap:6px;margin:6px 0;">
+      <input id="frbo-human" type="checkbox"> I am human
+    </label>
+    <div style="display:flex; gap:6px; margin-top:6px;">
+      <button id="frbo-mark-sent" style="flex:1; background:#22c55e; border:0; color:#111; padding:6px 8px; border-radius:6px; cursor:pointer;">Mark Sent</button>
+      <button id="frbo-skip" style="flex:1; background:#eab308; border:0; color:#111; padding:6px 8px; border-radius:6px; cursor:pointer;">Skip</button>
+    </div>
+    <div id="frbo-hud-note" style="margin-top:6px; color:#a3a3a3;">Send your message in Zillow, then click Mark Sent.</div>
+  `;
+  document.documentElement.appendChild(hud);
+
+  const human = hud.querySelector('#frbo-human');
+  const note  = hud.querySelector('#frbo-hud-note');
+
+  function mustHuman() {
+    if (!human.checked) {
+      note.textContent = 'Please check "I am human" first.';
+      note.style.color = '#fca5a5';
+      return false;
+    }
+    note.style.color = '#a3a3a3';
+    note.textContent = 'Logged. You can close this tab.';
+    return true;
+  }
+
+  async function mark(status) {
+    const url = location.href.split('#')[0].split('?')[0];
+    const resp = await new Promise(res => {
+      chrome.runtime.sendMessage({ type:'MARK_LEAD', url, status }, res);
+    });
+    if (!resp?.ok) {
+      note.textContent = `Failed to mark: ${resp?.error || 'unknown'}`;
+      note.style.color = '#fca5a5';
+    } else {
+      note.textContent = status === 'sent' ? 'Marked sent ✓' : 'Skipped ✓';
+      note.style.color = '#a3a3a3';
+      setTimeout(() => window.close(), 800);
+    }
+  }
+
+  hud.querySelector('#frbo-mark-sent').addEventListener('click', () => {
+    if (mustHuman()) mark('sent');
+  });
+  hud.querySelector('#frbo-skip').addEventListener('click', () => {
+    if (mustHuman()) mark('skipped');
+  });
+})();
+
 

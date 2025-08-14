@@ -180,4 +180,47 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
+async function getApiBase() {
+  const s = await chrome.storage.sync.get({ api: 'https://zillow-assistant-backend.onrender.com' });
+  return (s.api || '').replace(/\/+$/,'');
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  (async () => {
+    if (message?.type === 'INGEST_ROWS') {
+      try {
+        const api = await getApiBase();
+        const r = await fetch(`${api}/api/leads/ingest`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ rows: message.rows || [] })
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        sendResponse({ ok:true });
+      } catch (e) {
+        console.error('[BG] INGEST_ROWS failed:', e);
+        sendResponse({ ok:false, error:String(e.message||e) });
+      }
+    }
+    if (message?.type === 'MARK_LEAD') {
+      try {
+        const api = await getApiBase();
+        const r = await fetch(`${api}/api/leads/mark`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            url: message.url,
+            status: message.status,
+            reason: message.reason || '',
+          })
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        sendResponse({ ok:true });
+      } catch (e) {
+        console.error('[BG] MARK_LEAD failed:', e);
+        sendResponse({ ok:false, error:String(e.message||e) });
+      }
+    }
+  })();
+  return true;
+});
+
 
