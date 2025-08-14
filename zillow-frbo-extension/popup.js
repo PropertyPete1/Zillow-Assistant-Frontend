@@ -1,3 +1,223 @@
+// popup.js — robust wiring with health check + strong status + console logs
+(function () {
+  const qs = (id) => document.getElementById(id);
+  const status = qs('popupStatus');
+
+  function showStatus(msg, kind = '') {
+    status.textContent = msg;
+    status.className = kind ? `status-${kind}` : '';
+  }
+
+  function log(...a) { console.log('[FRBO popup]', ...a); }
+
+  // Elements
+  const apiEl       = qs('apiInput');
+  const capHourEl   = qs('capHour');
+  const capDayEl    = qs('capDay');
+  const countEl     = qs('count');
+  const taUrlsEl    = qs('taUrls');
+  const pasteCityEl = qs('pasteCity');
+  const pastePriceEl= qs('pastePrice');
+  const sheetUrlEl  = qs('sheetUrl');
+  const sheetCountEl= qs('sheetCount');
+
+  const btnSaveApi  = qs('btnSaveApi');
+  const btnSaveCaps = qs('btnSaveCaps');
+  const btnGetOpen  = qs('btnGetOpen');
+  const btnPause    = qs('btnPause');
+  const btnResume   = qs('btnResume');
+  const btnSeed3    = qs('btnSeed3');
+  const btnAddPasted= qs('btnAddPasted');
+  const btnPullSheet= qs('btnPullSheet');
+
+  // Helpers
+  function normalizeBase(url) { return (url || '').trim().replace(/\/+$/,''); }
+  async function getApi() {
+    const s = await chrome.storage.sync.get({ api: 'https://zillow-assistant-backend.onrender.com' });
+    return normalizeBase(s.api);
+  }
+  async function setApi(v) {
+    const api = normalizeBase(v);
+    await chrome.storage.sync.set({ api });
+    return api;
+  }
+
+  async function apiRequest(url, options = {}) {
+    for (let i = 0; i < 2; i++) {
+      try {
+        const r = await fetch(url, { ...options, headers: { 'Content-Type':'application/json', ...(options.headers||{}) }});
+        if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+        const ct = r.headers.get('content-type') || '';
+        return ct.includes('application/json') ? r.json() : r.text();
+      } catch (e) {
+        if (i === 1) throw e;
+        await new Promise(res => setTimeout(res, 800 + Math.random()*400));
+      }
+    }
+  }
+
+  // Load saved values
+  (async function init() {
+    try {
+      const s = await chrome.storage.sync.get({
+        api: 'https://zillow-assistant-backend.onrender.com',
+        capHour: 25,
+        capDay: 75,
+        sheetUrl: ''
+      });
+      apiEl.value = normalizeBase(s.api);
+      capHourEl.value = s.capHour;
+      capDayEl.value  = s.capDay;
+      sheetUrlEl.value= s.sheetUrl;
+
+      showStatus('Ready', '');
+      log('Loaded settings:', s);
+    } catch (e) {
+      console.error(e);
+      showStatus('Failed to load settings', 'red');
+    }
+  })();
+
+  // Save URL + health check
+  btnSaveApi.addEventListener('click', async () => {
+    try {
+      const api = await setApi(apiEl.value);
+      showStatus('Checking backend…', 'yellow');
+      await apiRequest(`${api}/api/leads/health`);
+      showStatus('Backend URL saved & reachable ✓', 'green');
+      log('Saved api =', api);
+    } catch (e) {
+      console.error(e);
+      showStatus(`Save/health failed: ${e.message}`, 'red');
+    }
+  });
+
+  // Save caps
+  btnSaveCaps.addEventListener('click', async () => {
+    try {
+      const perHour = Math.max(1, parseInt(capHourEl.value) || 25);
+      const perDay  = Math.max(1, parseInt(capDayEl.value)  || 75);
+      await chrome.storage.sync.set({ capHour: perHour, capDay: perDay });
+      chrome.runtime.sendMessage({ type:'SET_LIMITS', limits:{ perHour, perDay }});
+      showStatus(`Caps saved: ${perHour}/${perDay}`, 'green');
+      log('Caps saved', { perHour, perDay });
+    } catch (e) {
+      console.error(e);
+      showStatus('Could not save caps', 'red');
+    }
+  });
+
+  // Get & Open
+  btnGetOpen.addEventListener('click', async () => {
+    try {
+      const api = await getApi();
+      if (!api) return showStatus('Set backend URL first', 'red');
+      const n = Math.max(1, Math.min(25, parseInt(countEl.value) || 10));
+      showStatus('Fetching next batch…', 'yellow');
+      const data = await apiRequest(`${api}/api/leads/next-batch?count=${n}`);
+      log('next-batch returned', data);
+      if (!Array.isArray(data) || data.length === 0) {
+        return showStatus('No items returned. Fill queue first.', 'yellow');
+      }
+      chrome.runtime.sendMessage({ type:'OPEN_BATCH', items: data });
+      showStatus(`Queued ${data.length} tabs. Opening…`, 'green');
+    } catch (e) {
+      console.error(e);
+      showStatus(`Get & Open failed: ${e.message}`, 'red');
+    }
+  });
+
+  btnPause.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type:'PAUSE' });
+    showStatus('Paused', 'yellow');
+  });
+  btnResume.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type:'RESUME' });
+    showStatus('Resumed', 'green');
+  });
+
+  // Seed 3 Test
+  btnSeed3.addEventListener('click', async () => {
+    try {
+      const api = await getApi();
+      if (!api) return showStatus('Set backend URL first', 'red');
+      showStatus('Seeding…', 'yellow');
+      await apiRequest(`${api}/api/leads/ingest`, {
+        method: 'POST',
+        body: JSON.stringify({
+          rows: [
+            { url: "https://www.zillow.com/homedetails/TEST1", city:"Austin",       price:"$1,995", status:"queued" },
+            { url: "https://www.zillow.com/homedetails/TEST2", city:"Round Rock",   price:"$2,150", status:"queued" },
+            { url: "https://www.zillow.com/homedetails/TEST3", city:"Pflugerville", price:"$1,875", status:"queued" }
+          ]
+        })
+      });
+      showStatus('Seeded 3 test leads', 'green');
+    } catch (e) {
+      console.error(e);
+      showStatus(`Seed failed: ${e.message}`, 'red');
+    }
+  });
+
+  // Add Pasted URLs
+  btnAddPasted.addEventListener('click', async () => {
+    try {
+      const api = await getApi();
+      if (!api) return showStatus('Set backend URL first', 'red');
+
+      const urls = (taUrlsEl.value || '').split('\n')
+        .map(s => s.trim()).filter(Boolean)
+        .filter(u => /zillow\.com\/homedetails\//i.test(u));
+
+      if (!urls.length) return showStatus('No valid Zillow URLs', 'yellow');
+
+      const city = (pasteCityEl.value || '').trim();
+      const price= (pastePriceEl.value || '').trim();
+      const rows = Array.from(new Set(urls)).map(url => ({ url, city, price, status:'queued' }));
+
+      showStatus('Adding…', 'yellow');
+      await apiRequest(`${api}/api/leads/ingest`, {
+        method:'POST',
+        body: JSON.stringify({ rows })
+      });
+      showStatus(`Added ${rows.length} to queue`, 'green');
+      taUrlsEl.value = '';
+    } catch (e) {
+      console.error(e);
+      showStatus(`Add failed: ${e.message}`, 'red');
+    }
+  });
+
+  // Pull & Add (optional)
+  btnPullSheet.addEventListener('click', async () => {
+    try {
+      const api = await getApi();
+      if (!api) return showStatus('Set backend URL first', 'red');
+      const webApp = normalizeBase(sheetUrlEl.value);
+      const cnt = Math.max(1, Math.min(50, parseInt(sheetCountEl.value) || 20));
+      if (!webApp) return showStatus('Set Sheet Web App URL first', 'red');
+
+      await chrome.storage.sync.set({ sheetUrl: webApp });
+
+      showStatus('Pulling from Sheet…', 'yellow');
+      const rows = await apiRequest(`${webApp}?count=${cnt}`);
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return showStatus('Sheet returned 0 rows', 'yellow');
+      }
+      await apiRequest(`${api}/api/leads/ingest`, {
+        method:'POST',
+        body: JSON.stringify({ rows })
+      });
+      showStatus(`Pulled & queued ${rows.length} rows`, 'green');
+    } catch (e) {
+      console.error(e);
+      showStatus(`Sheet pull failed: ${e.message}`, 'red');
+    }
+  });
+
+  // On load, log current storage for debugging
+  chrome.storage.sync.get(null, all => log('chrome.storage.sync snapshot →', all));
+})();
 // popup.js — hard-wired to backend with health check + strict status feedback
 document.addEventListener('DOMContentLoaded', async () => {
   // Elements
