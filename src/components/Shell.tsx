@@ -4,8 +4,7 @@ import { usePathname } from 'next/navigation';
 import React from 'react';
 
 const nav = [
-  { href: '/', label: '🏠 Dashboard' },
-  { href: '/scraper', label: '🔍 Scraper' },
+  { href: '/frbo', label: '🏠 FRBO Console' },
   { href: '/messages', label: '📨 Messages' },
   { href: '/logs', label: '🗂️ Logs' },
   { href: '/settings', label: '⚙️ Settings' },

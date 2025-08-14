@@ -120,7 +120,7 @@ export default function MessagesPage() {
         >
           {sending ? 'Sending…' : (settings?.dailyMessageLimit ?? 0) <= 0 ? 'Daily limit reached' : 'Send All Messages'}
         </button>
-        <a href="/scraper" className="px-3 py-2 rounded bg-white/10 hover:bg-white/20">Go to Scraper</a>
+        <a href="/frbo" className="px-3 py-2 rounded bg-white/10 hover:bg-white/20">Go to FRBO Console</a>
       </div>
 
       <div className="rounded border border-white/10 p-3">
@@ -173,7 +173,7 @@ export default function MessagesPage() {
           })}
           {!listings.length && (
             <div className="opacity-80">
-              No listings loaded. <a className="underline text-cyan-400" href="/scraper">Go to Scraper</a>.
+              No listings loaded. <a className="underline text-cyan-400" href="/frbo">Go to FRBO Console</a>.
             </div>
           )}
         </div>
