@@ -1,0 +1,5 @@
+[
+  {"url":"https://www.zillow.com/homedetails/TEST1","city":"Austin","price":",995","status":"queued"},
+  {"url":"https://www.zillow.com/homedetails/TEST2","city":"Round Rock","price":",150","status":"queued"},
+  {"url":"https://www.zillow.com/homedetails/TEST3","city":"Pflugerville","price":",875","status":"queued"}
+]
