@@ -158,11 +158,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // Handle extension install/update
-chrome.runtime.onInstalled.addEventListener((details) => {
+chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     console.log('Zillow FRBO Helper installed');
   } else if (details.reason === 'update') {
     console.log('Zillow FRBO Helper updated');
+  }
+});
+
+// React to storage changes for caps so limits update even if popup isn't open
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'sync' && (changes.capHour || changes.capDay)) {
+    const perHour = changes.capHour ? changes.capHour.newValue : undefined;
+    const perDay  = changes.capDay  ? changes.capDay.newValue  : undefined;
+    const limits = {};
+    if (typeof perHour === 'number') limits.perHour = perHour;
+    if (typeof perDay  === 'number') limits.perDay  = perDay;
+    if (Object.keys(limits).length) {
+      try { tabOpener.setLimits(limits); } catch(e) { /* no-op */ }
+    }
   }
 });
 
