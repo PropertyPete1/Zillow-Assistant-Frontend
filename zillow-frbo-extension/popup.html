@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 380px;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      background: #f8f9fa;
+    }
+    
+    .container {
+      padding: 16px;
+    }
+    
+    .section {
+      background: white;
+      border: 1px solid #e1e5e9;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    
+    .section h3 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+    
+    .field-group {
+      margin-bottom: 12px;
+    }
+    
+    .field-group:last-child {
+      margin-bottom: 0;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 500;
+      color: #333;
+    }
+    
+    input, textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      box-sizing: border-box;
+      font-size: 13px;
+    }
+    
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+    
+    button:hover {
+      background: #2563eb;
+    }
+    
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    
+    .inline-group {
+      display: flex;
+      gap: 8px;
+      align-items: end;
+    }
+    
+    .inline-group input {
+      flex: 1;
+    }
+    
+    .caps-group {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .caps-group > div {
+      flex: 1;
+    }
+    
+    .caps-group input {
+      width: 100%;
+    }
+    
+    #taUrls {
+      height: 80px;
+      resize: vertical;
+    }
+    
+    .helper {
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+    
+    #popupStatus {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 500;
+      text-align: center;
+      border-top: 1px solid #e1e5e9;
+      background: white;
+    }
+    
+    .status-green { background: #dcfce7; color: #166534; }
+    .status-yellow { background: #fef3c7; color: #92400e; }
+    .status-red { background: #fee2e2; color: #dc2626; }
+  </style>
+</head>
+<body>
+  <div class="container" style="padding-bottom: 50px;">
+    
+    <!-- Backend & Caps -->
+    <div class="section">
+      <h3>Backend & Caps</h3>
+      
+      <div class="field-group">
+        <div class="inline-group">
+          <div style="flex: 1;">
+            <label for="apiInput">Backend URL</label>
+            <input type="text" id="apiInput" placeholder="https://zillow-assistant-backend.onrender.com">
+          </div>
+          <button id="btnSaveApi">Save URL</button>
+        </div>
+      </div>
+      
+      <div class="field-group">
+        <label>Rate Limits</label>
+        <div class="caps-group">
+          <div>
+            <input type="number" id="capHour" placeholder="25" min="1" max="100">
+            <div class="helper">Per hour</div>
+          </div>
+          <div>
+            <input type="number" id="capDay" placeholder="75" min="1" max="500">
+            <div class="helper">Per day</div>
+          </div>
+          <button id="btnSaveCaps">Save Caps</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Run Batch -->
+    <div class="section">
+      <h3>Run Batch</h3>
+      
+      <div class="field-group">
+        <div class="inline-group">
+          <div>
+            <label for="count">Count</label>
+            <input type="number" id="count" value="10" min="1" max="25">
+          </div>
+          <div class="button-group">
+            <button id="btnGetOpen">Get & Open</button>
+            <button id="btnPause">Pause</button>
+            <button id="btnResume">Resume</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Queue Tools -->
+    <div class="section">
+      <h3>No-CLI Queue Tools</h3>
+      
+      <div class="field-group">
+        <button id="btnSeed3">Seed 3 Test</button>
+      </div>
+      
+      <div class="field-group">
+        <label for="taUrls">Paste URLs (one per line)</label>
+        <textarea id="taUrls" placeholder="https://www.zillow.com/homedetails/..."></textarea>
+        <div class="inline-group" style="margin-top: 8px;">
+          <input type="text" id="pasteCity" placeholder="City (optional)">
+          <input type="text" id="pastePrice" placeholder="Price (optional)">
+          <button id="btnAddPasted">Add to Queue</button>
+        </div>
+      </div>
+      
+      <div class="field-group">
+        <label for="sheetUrl">Apps Script Web App URL</label>
+        <div class="inline-group">
+          <input type="text" id="sheetUrl" placeholder="https://script.google.com/...">
+          <input type="number" id="sheetCount" value="20" min="1" max="50" style="width: 80px;">
+          <button id="btnPullSheet">Pull & Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="popupStatus">Ready</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
+
+

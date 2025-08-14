@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Zillow FRBO Helper - Options</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f8f9fa;
+    }
+    
+    .container {
+      background: white;
+      padding: 32px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    
+    h1 {
+      margin: 0 0 24px 0;
+      font-size: 24px;
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+    
+    .section {
+      margin-bottom: 24px;
+    }
+    
+    .section:last-child {
+      margin-bottom: 0;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: #333;
+    }
+    
+    textarea {
+      width: 100%;
+      height: 120px;
+      padding: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    
+    textarea:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 16px 0;
+    }
+    
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+    }
+    
+    .checkbox-group label {
+      margin: 0;
+      font-weight: normal;
+    }
+    
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+    
+    button:hover {
+      background: #2563eb;
+    }
+    
+    .helper {
+      font-size: 13px;
+      color: #6b7280;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+    
+    .status {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    
+    .status.show {
+      opacity: 1;
+    }
+    
+    .status.success {
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+    
+    .status.error {
+      background: #fee2e2;
+      color: #dc2626;
+      border: 1px solid #fecaca;
+    }
+    
+    .token-list {
+      background: #f3f4f6;
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 8px;
+      font-size: 13px;
+      font-family: 'Monaco', 'Menlo', monospace;
+    }
+  </style>
+  <title>Zillow FRBO Helper - Options</title>
+</head>
+<body>
+  <div class="container">
+    <h1>Zillow FRBO Helper Options</h1>
+    
+    <div class="section">
+      <label for="tpl">Message Template</label>
+      <textarea id="tpl" placeholder="Enter your message template here..."></textarea>
+      
+      <div class="helper">
+        Available tokens:
+        <div class="token-list">
+          {address} - Property address<br>
+          {city} - City name<br>
+          {price} - Listed price<br>
+          {beds} - Number of bedrooms<br>
+          {baths} - Number of bathrooms
+        </div>
+      </div>
+    </div>
+    
+    <div class="section">
+      <div class="checkbox-group">
+        <input type="checkbox" id="skipAgents">
+        <label for="skipAgents">Skip agent/managed listings</label>
+      </div>
+      <div class="helper">
+        When enabled, properties identified as agent or professionally managed listings will be skipped during autofill.
+      </div>
+    </div>
+    
+    <div class="section">
+      <button id="btnSaveTpl">Save Template</button>
+      <div id="status" class="status"></div>
+    </div>
+  </div>
+
+  <script>
+    // Default template
+    const DEFAULT_TEMPLATE = "Hi! Saw your {beds}/{baths} at {address} in {city}. Is it still available? I have qualified tenants. Price shows {price}.";
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Load saved settings
+      const settings = await chrome.storage.sync.get({
+        msgTemplate: DEFAULT_TEMPLATE,
+        skipAgents: true
+      });
+
+      document.getElementById('tpl').value = settings.msgTemplate;
+      document.getElementById('skipAgents').checked = settings.skipAgents;
+
+      // Status helper
+      const status = document.getElementById('status');
+      function showStatus(msg, type = 'success') {
+        status.textContent = msg;
+        status.className = `status show ${type}`;
+        setTimeout(() => {
+          status.classList.remove('show');
+        }, 3000);
+      }
+
+      // Save template
+      document.getElementById('btnSaveTpl').addEventListener('click', async () => {
+        try {
+          const template = document.getElementById('tpl').value.trim();
+          const skipAgents = document.getElementById('skipAgents').checked;
+
+          if (!template) {
+            showStatus('Template cannot be empty.', 'error');
+            return;
+          }
+
+          await chrome.storage.sync.set({
+            msgTemplate: template,
+            skipAgents: skipAgents
+          });
+
+          showStatus('Template saved.');
+        } catch (error) {
+          showStatus('Could not save template.', 'error');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
+
+
