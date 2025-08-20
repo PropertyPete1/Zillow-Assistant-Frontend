@@ -654,3 +654,117 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 
+// === Phase 3.1 owners-only messaging UI ===
+(function () {
+  try {
+    const container = document.querySelector('.container');
+    if (!container) return;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'section';
+    wrapper.innerHTML = `
+      <h3>Owners-only Messaging</h3>
+      <label>City or query</label>
+      <input id="zx_city" style="width:100%" />
+      <label style="display:flex;gap:8px;align-items:center;margin-top:8px">
+        <input type="checkbox" id="zx_ownersOnly" checked /> Owners only
+      </label>
+      <label style="margin-top:8px">Message template</label>
+      <textarea id="zx_tpl" rows="4" style="width:100%" placeholder="Hi ${name}, ..."></textarea>
+      <button id="zx_find" style="margin-top:8px">Find Owners</button>
+      <div id="zx_summary" style="margin-top:8px"></div>
+      <ul id="zx_results" style="margin-top:8px; padding-left:16px"></ul>
+    `;
+    container.appendChild(wrapper);
+
+    const city = wrapper.querySelector('#zx_city');
+    const ownersOnly = wrapper.querySelector('#zx_ownersOnly');
+    const tpl = wrapper.querySelector('#zx_tpl');
+    const findBtn = wrapper.querySelector('#zx_find');
+    const summary = wrapper.querySelector('#zx_summary');
+    const list = wrapper.querySelector('#zx_results');
+
+    city.value = 'austin, tx';
+    ownersOnly.checked = true;
+    tpl.value = `Hi ${'${name}'}${', I’m interested in your rental. Are you open to a quick chat today?'}`;
+
+    async function startScrape(cityQuery, ownersOnlyVal) {
+      const apiBase = (await chrome.storage.sync.get({ api: 'https://zillow-assistant-backend.onrender.com' })).api.replace(/\/+$/,'');
+      const r = await fetch(`${apiBase}/api/scraper/start`, {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ cityQuery, ownersOnly: ownersOnlyVal !== false })
+      });
+      if (!r.ok) throw new Error(`scrape failed: ${r.status}`);
+      return r.json();
+    }
+    async function checkDuplicate(listingId) {
+      const apiBase = (await chrome.storage.sync.get({ api: 'https://zillow-assistant-backend.onrender.com' })).api.replace(/\/+$/,'');
+      const u = new URL(`${apiBase}/api/messages/check`);
+      u.searchParams.set('listingId', listingId);
+      const r = await fetch(u.toString());
+      if (!r.ok) throw new Error(`dup check failed: ${r.status}`);
+      return r.json();
+    }
+    async function logMessage(payload) {
+      const apiBase = (await chrome.storage.sync.get({ api: 'https://zillow-assistant-backend.onrender.com' })).api.replace(/\/+$/,'');
+      const r = await fetch(`${apiBase}/api/messages/log`, {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) throw new Error(`log failed: ${r.status}`);
+      return r.json();
+    }
+
+    findBtn.addEventListener('click', async () => {
+      findBtn.disabled = true; findBtn.textContent = 'Working…';
+      try {
+        const res = await startScrape(city.value, ownersOnly.checked);
+        list.innerHTML = '';
+        const kept = res.included || [];
+        const dropped = res.summary?.dropped || 0;
+        summary.textContent = `Found owners: ${kept.length}   Dropped: ${dropped}`;
+        for (const l of kept) {
+          const li = document.createElement('li');
+          li.style.marginBottom = '10px';
+          li.innerHTML = `
+            <div><a href="${l.url}" target="_blank">${l.address || l.url}</a></div>
+            <div>Owner: <b>${l.ownerName || 'Unknown'}</b> <span style="opacity:.7">(${Math.round((l.ownerConfidence || 0)*100)}%)</span></div>
+            <button class="zx_msg" style="margin-top:6px">Message owner</button>
+          `;
+          li.querySelector('.zx_msg').addEventListener('click', async () => {
+            const listingId = l.id || l.url;
+            const dup = await checkDuplicate(listingId);
+            if (dup.duplicate) {
+              const cont = confirm(`Already messaged within ${dup.windowDays} days. Proceed anyway?`);
+              if (!cont) {
+                await logMessage({
+                  listingId, listingUrl: l.url, address: l.address, ownerName: l.ownerName,
+                  messageText: tpl.value.replace('${name}', l.ownerName || 'there'),
+                  status: 'BLOCKED_DUP', reason: 'duplicate_within_window'
+                });
+                return;
+              }
+            }
+            const messageText = tpl.value.replace('${name}', l.ownerName || 'there');
+            chrome.runtime.sendMessage({ type: 'OPEN_AND_MESSAGE', url: l.url, listingId, messageText });
+          });
+          list.appendChild(li);
+        }
+      } catch (e) {
+        alert(`Find owners failed: ${e.message}`);
+      } finally {
+        findBtn.disabled = false; findBtn.textContent = 'Find Owners';
+      }
+    });
+
+    chrome.runtime.onMessage.addListener((m) => {
+      if (m?.type === 'MSG_RESULT') {
+        const messageText = tpl.value;
+        const status = m.ok ? 'SENT' : (m.reason === 'user_cancelled' ? 'CONFIRMED_BUT_NOT_SENT' : 'FAILED');
+        logMessage({ listingId: m.listingId, listingUrl: '', address: '', ownerName: '', messageText, status, reason: m.reason || '' });
+        alert(m.ok ? 'Message sent ✔' : `Message failed: ${m.reason || 'unknown'}`);
+      }
+    });
+  } catch {}
+})();
+
+
