@@ -3,5 +3,10 @@
   "private": true,
   "version": "1.0.0",
   "description": "Meta repo containing backend(s) and Chrome extension only.",
-  "scripts": {}
+  "scripts": {
+    "dev": "npm --prefix backend run dev",
+    "build": "npm --prefix backend run build",
+    "start": "npm --prefix backend run start",
+    "lint": "echo 'No root linter configured'"
+  }
 }
